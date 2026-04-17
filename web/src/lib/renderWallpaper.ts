@@ -4,6 +4,7 @@ export type RenderOptions = {
   image: HTMLImageElement;
   preset: WallpaperPreset;
   dateText: string;
+  timeText: string;
   locationText: string;
 };
 
@@ -35,7 +36,7 @@ function drawCoverImage(
 }
 
 export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement {
-  const { image, preset, dateText, locationText } = options;
+  const { image, preset, dateText, timeText, locationText } = options;
   const canvas = document.createElement("canvas");
   canvas.width = preset.width;
   canvas.height = preset.height;
@@ -55,7 +56,9 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
 
   const margin = Math.max(48, Math.floor(preset.width * 0.04));
   const dateFontSize = Math.max(40, Math.floor(preset.width * 0.024));
+  const timeFontSize = Math.max(32, Math.floor(preset.width * 0.019));
   const locationFontSize = Math.max(30, Math.floor(preset.width * 0.017));
+  const lineSpacing = Math.max(12, Math.floor(preset.width * 0.006));
 
   context.textBaseline = "bottom";
   context.fillStyle = "#ffffff";
@@ -64,11 +67,31 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
   context.shadowOffsetY = 3;
   context.textAlign = "left";
 
-  context.font = `700 ${dateFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-  context.fillText(dateText, margin, preset.height - margin - locationFontSize - 16);
+  const lines = [
+    {
+      text: dateText.trim(),
+      font: `700 ${dateFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`,
+      size: dateFontSize
+    },
+    {
+      text: timeText.trim(),
+      font: `500 ${timeFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`,
+      size: timeFontSize
+    },
+    {
+      text: locationText.trim(),
+      font: `500 ${locationFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`,
+      size: locationFontSize
+    }
+  ].filter((line) => line.text.length > 0);
 
-  context.font = `500 ${locationFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-  context.fillText(locationText, margin, preset.height - margin);
+  let currentY = preset.height - margin;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    context.font = line.font;
+    context.fillText(line.text, margin, currentY);
+    currentY -= line.size + lineSpacing;
+  }
 
   context.shadowBlur = 0;
   context.shadowOffsetY = 0;

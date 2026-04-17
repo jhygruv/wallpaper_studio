@@ -5,6 +5,7 @@ type ExifDateValue = Date | string | number | undefined;
 export type ExtractedPhotoMeta = {
   capturedAt: Date | null;
   capturedAtText: string;
+  capturedTimeText: string;
   latitude: number | null;
   longitude: number | null;
   locationText: string;
@@ -32,12 +33,21 @@ function parseDateValue(value: ExifDateValue): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function formatCapturedAt(date: Date | null): string {
+export function formatCapturedAt(date: Date | null, locale = "ko-KR"): string {
   if (!date) {
     return "촬영 날짜 없음";
   }
-  return new Intl.DateTimeFormat("ko-KR", {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "long"
+  }).format(date);
+}
+
+export function formatCapturedTime(date: Date | null, locale = "ko-KR"): string {
+  if (!date) {
+    return "촬영 시간 없음";
+  }
+  return new Intl.DateTimeFormat(locale, {
+    timeStyle: "medium"
   }).format(date);
 }
 
@@ -75,6 +85,7 @@ export async function extractPhotoMeta(file: File): Promise<ExtractedPhotoMeta> 
   return {
     capturedAt,
     capturedAtText: formatCapturedAt(capturedAt),
+    capturedTimeText: formatCapturedTime(capturedAt),
     latitude,
     longitude,
     locationText: hasGps ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "",
