@@ -306,7 +306,12 @@ export default function HomePage(): JSX.Element {
     visibility?: {
       showDate?: boolean;
       showTime?: boolean;
-      showLocation?: boolean;
+    },
+    locationVisibility?: {
+      showAutoLocation?: boolean;
+      showManualLocation?: boolean;
+      autoLocation?: string;
+      manualLocation?: string;
     }
   ): Promise<void> {
     if (!selectedFile) {
@@ -319,7 +324,7 @@ export default function HomePage(): JSX.Element {
         selectedFile,
         capturedAtText,
         capturedTimeText,
-        resolveLocationText(),
+        resolveLocationText(locationVisibility),
         presetId,
         visibility
       );
@@ -352,14 +357,28 @@ export default function HomePage(): JSX.Element {
     const nextShowManual = nextValue ? false : showManualLocationOnWallpaper;
     setShowAutoLocationOnWallpaper(nextValue);
     setShowManualLocationOnWallpaper(nextShowManual);
-    await regeneratePreviewWithCurrentState("표시 항목 변경을 미리보기에 반영하는 중...");
+    await regeneratePreviewWithCurrentState(
+      "표시 항목 변경을 미리보기에 반영하는 중...",
+      undefined,
+      {
+        showAutoLocation: nextValue,
+        showManualLocation: nextShowManual
+      }
+    );
   }
 
   async function handleManualLocationToggle(nextValue: boolean): Promise<void> {
     const nextShowAuto = nextValue ? false : showAutoLocationOnWallpaper;
     setShowManualLocationOnWallpaper(nextValue);
     setShowAutoLocationOnWallpaper(nextShowAuto);
-    await regeneratePreviewWithCurrentState("표시 항목 변경을 미리보기에 반영하는 중...");
+    await regeneratePreviewWithCurrentState(
+      "표시 항목 변경을 미리보기에 반영하는 중...",
+      undefined,
+      {
+        showAutoLocation: nextShowAuto,
+        showManualLocation: nextValue
+      }
+    );
   }
 
   function handleDownload(): void {
