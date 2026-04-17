@@ -25,12 +25,13 @@ app.get("/reverse-geocode", async (request, response) => {
   }
 
   try {
-    const location = await reverseGeocode(lat, lon, lang);
-    response.json({ location });
+    const result = await reverseGeocode(lat, lon, lang);
+    response.json(result);
   } catch (error) {
     response.status(502).json({
       message: error instanceof Error ? error.message : "reverse_geocode_failed",
-      location: "위치 정보 없음"
+      location: "위치 정보 없음",
+      parts: []
     });
   }
 });

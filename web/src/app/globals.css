@@ -88,6 +88,31 @@ button {
   flex-shrink: 0;
 }
 
+.locationTagGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.locationTagButton {
+  width: auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #3a455e;
+  background: #131722;
+  color: #c8d1ea;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.locationTagButton.isActive {
+  background: rgba(95, 122, 255, 0.24);
+  border-color: rgba(140, 168, 255, 0.9);
+  color: #eff3ff;
+}
+
 .fontSizeStepGroup {
   display: inline-flex;
   align-items: center;
@@ -304,4 +329,5 @@ button {
   .downloadButton {
     order: 2;
   }
+
 }

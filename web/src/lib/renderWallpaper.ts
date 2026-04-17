@@ -70,18 +70,19 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
 
   const normalizedScale = Number.isFinite(fontScale) ? Math.max(0.6, Math.min(fontScale, 2.2)) : 1;
   const isMobilePreset = preset.id.includes("mobile") || preset.id.includes("iphone");
-  const mobilePresetBoost = isMobilePreset ? 2 : 1;
+  const mobilePresetBoost = isMobilePreset ? 1.2 : 1;
   const effectiveScale = normalizedScale * mobilePresetBoost;
   const baseMargin = Math.max(48, Math.floor(preset.width * 0.04));
   const safeInsetX = Math.max(0, Math.floor((preset.width * preset.safeAreaXPercent) / 100));
-  const safeInsetY = Math.max(0, Math.floor((preset.height * preset.safeAreaYPercent) / 100));
+  const safeInsetTop = Math.max(0, Math.floor((preset.height * preset.safeAreaTopPercent) / 100));
+  const safeInsetBottom = Math.max(0, Math.floor((preset.height * preset.safeAreaBottomPercent) / 100));
   const leftBoundary = useSafeArea ? Math.max(baseMargin, safeInsetX) : baseMargin;
   const rightBoundary = useSafeArea
     ? Math.min(preset.width - baseMargin, preset.width - safeInsetX)
     : preset.width - baseMargin;
-  const topBoundary = useSafeArea ? Math.max(baseMargin, safeInsetY) : baseMargin;
+  const topBoundary = useSafeArea ? Math.max(baseMargin, safeInsetTop) : baseMargin;
   const bottomBoundary = useSafeArea
-    ? Math.min(preset.height - baseMargin, preset.height - safeInsetY)
+    ? Math.min(preset.height - baseMargin, preset.height - safeInsetBottom)
     : preset.height - baseMargin;
   const dateFontSize = Math.max(24, Math.floor(preset.width * 0.024 * effectiveScale));
   const timeFontSize = Math.max(20, Math.floor(preset.width * 0.019 * effectiveScale));

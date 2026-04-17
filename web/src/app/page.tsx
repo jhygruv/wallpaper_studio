@@ -11,6 +11,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8
 
 type ReverseGeocodeResponse = {
   location: string;
+  parts?: string[];
 };
 
 const LANGUAGE_OPTIONS = [
@@ -64,7 +65,7 @@ async function reverseGeocode(
   latitude: number,
   longitude: number,
   language: string
-): Promise<string | null> {
+): Promise<ReverseGeocodeResponse | null> {
   try {
     const response = await fetch(
       `${API_BASE_URL}/reverse-geocode?lat=${latitude}&lon=${longitude}&lang=${encodeURIComponent(
@@ -73,12 +74,18 @@ async function reverseGeocode(
     );
     const data = (await response.json()) as ReverseGeocodeResponse;
     if (!response.ok) {
-      return data.location?.trim() || null;
+      return data.location?.trim() ? data : null;
     }
-    return data.location?.trim() || null;
+    return data.location?.trim() ? data : null;
   } catch {
     return null;
   }
+}
+
+function joinLocationParts(parts: string[], language: string): string {
+  const lang = language.toLowerCase();
+  const separator = lang.startsWith("ko") || lang.startsWith("ja") ? " " : ", ";
+  return parts.join(separator).trim();
 }
 
 export default function HomePage(): JSX.Element {
@@ -86,6 +93,8 @@ export default function HomePage(): JSX.Element {
   const [capturedAtText, setCapturedAtText] = useState<string>("촬영 날짜 없음");
   const [capturedTimeText, setCapturedTimeText] = useState<string>("촬영 시간 없음");
   const [autoLocationText, setAutoLocationText] = useState<string>("");
+  const [autoLocationParts, setAutoLocationParts] = useState<string[]>([]);
+  const [activeAutoLocationParts, setActiveAutoLocationParts] = useState<boolean[]>([]);
   const [manualLocationText, setManualLocationText] = useState<string>("");
   const [presetId, setPresetId] = useState<string>(WALLPAPER_PRESETS[0].id);
   const [previewUrl, setPreviewUrl] = useState<string>("");
@@ -110,6 +119,17 @@ export default function HomePage(): JSX.Element {
     }
     return autoLocationText.trim() || "위치 정보 없음";
   }, [autoLocationText, manualLocationText]);
+
+  const selectedAutoLocationText = useMemo(() => {
+    if (autoLocationParts.length > 0 && activeAutoLocationParts.length === autoLocationParts.length) {
+      const selectedParts = autoLocationParts.filter((_, index) => activeAutoLocationParts[index]);
+      if (selectedParts.length === 0) {
+        return "";
+      }
+      return joinLocationParts(selectedParts, displayLanguage);
+    }
+    return autoLocationText.trim();
+  }, [activeAutoLocationParts, autoLocationParts, autoLocationText, displayLanguage]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -151,7 +171,7 @@ export default function HomePage(): JSX.Element {
   }): string {
     const showAutoLocation = visibility?.showAutoLocation ?? showAutoLocationOnWallpaper;
     const showManualLocation = visibility?.showManualLocation ?? showManualLocationOnWallpaper;
-    const autoLocation = (visibility?.autoLocation ?? autoLocationText).trim();
+    const autoLocation = (visibility?.autoLocation ?? selectedAutoLocationText).trim();
     const manualLocation = (visibility?.manualLocation ?? manualLocationText).trim();
 
     if (showManualLocation) {
@@ -221,18 +241,28 @@ export default function HomePage(): JSX.Element {
       setCapturedAtText(nextDateText);
       setCapturedTimeText(nextTimeText);
       if (meta.latitude !== null && meta.longitude !== null) {
-        const location = await reverseGeocode(meta.latitude, meta.longitude, displayLanguage);
-        if (location) {
-          nextAutoLocationText = location;
+        const geocode = await reverseGeocode(meta.latitude, meta.longitude, displayLanguage);
+        if (geocode) {
+          const nextParts = geocode.parts?.filter(Boolean) ?? [];
+          nextAutoLocationText = geocode.location;
           setAutoLocationText(nextAutoLocationText);
+          setAutoLocationParts(nextParts);
+          setActiveAutoLocationParts(nextParts.map(() => true));
+          setManualLocationText(nextAutoLocationText);
           setStatusMessage("촬영 위치를 자동으로 찾았습니다.");
         } else {
           nextAutoLocationText = `${meta.latitude.toFixed(5)}, ${meta.longitude.toFixed(5)}`;
           setAutoLocationText(nextAutoLocationText);
+          setAutoLocationParts([nextAutoLocationText]);
+          setActiveAutoLocationParts([true]);
+          setManualLocationText(nextAutoLocationText);
           setStatusMessage("주소 변환에 실패해 좌표로 표시했습니다. 필요하면 수동 입력해 주세요.");
         }
       } else {
         setAutoLocationText("");
+        setAutoLocationParts([]);
+        setActiveAutoLocationParts([]);
+        setManualLocationText("");
         setStatusMessage("GPS 정보가 없어 위치를 수동 입력해 주세요.");
       }
 
@@ -263,15 +293,22 @@ export default function HomePage(): JSX.Element {
       setCapturedAtText(nextDateText);
       setCapturedTimeText(nextTimeText);
       if (meta.latitude !== null && meta.longitude !== null) {
-        const location = await reverseGeocode(meta.latitude, meta.longitude, language);
-        if (location) {
-          setAutoLocationText(location);
-          const nextLocationText = resolveLocationText({ autoLocation: location });
+        const geocode = await reverseGeocode(meta.latitude, meta.longitude, language);
+        if (geocode) {
+          const nextParts = geocode.parts?.filter(Boolean) ?? [];
+          setAutoLocationText(geocode.location);
+          setAutoLocationParts(nextParts);
+          setActiveAutoLocationParts(nextParts.map(() => true));
+          setManualLocationText(geocode.location);
+          const nextLocationText = resolveLocationText({ autoLocation: geocode.location });
           await generatePreview(selectedFile, nextDateText, nextTimeText, nextLocationText, presetId);
           setStatusMessage("선택한 표시 언어로 날짜/시간/위치를 업데이트했습니다.");
         } else {
           const fallbackLocation = `${meta.latitude.toFixed(5)}, ${meta.longitude.toFixed(5)}`;
           setAutoLocationText(fallbackLocation);
+          setAutoLocationParts([fallbackLocation]);
+          setActiveAutoLocationParts([true]);
+          setManualLocationText(fallbackLocation);
           const nextLocationText = resolveLocationText({ autoLocation: fallbackLocation });
           await generatePreview(selectedFile, nextDateText, nextTimeText, nextLocationText, presetId);
           setStatusMessage("주소 변환에 실패해 좌표로 표시했습니다. 필요하면 수동 입력해 주세요.");
@@ -471,6 +508,24 @@ export default function HomePage(): JSX.Element {
     );
   }
 
+  async function handleAutoLocationPartToggle(index: number): Promise<void> {
+    if (index < 0 || index >= activeAutoLocationParts.length) {
+      return;
+    }
+    const nextActive = [...activeAutoLocationParts];
+    nextActive[index] = !nextActive[index];
+    setActiveAutoLocationParts(nextActive);
+
+    const nextParts = autoLocationParts.filter((_, partIndex) => nextActive[partIndex]);
+    const nextAutoLocation = joinLocationParts(nextParts, displayLanguage);
+    setManualLocationText(nextAutoLocation);
+    await regeneratePreviewWithCurrentState(
+      "자동 위치 항목 변경을 미리보기에 반영하는 중...",
+      undefined,
+      { autoLocation: nextAutoLocation }
+    );
+  }
+
   function handleDownload(): void {
     if (!previewUrl || !selectedFile) {
       setStatusMessage("다운로드할 결과가 없습니다. 먼저 생성해 주세요.");
@@ -620,8 +675,8 @@ export default function HomePage(): JSX.Element {
                 style={{
                   left: `${currentPreset.safeAreaXPercent}%`,
                   right: `${currentPreset.safeAreaXPercent}%`,
-                  top: `${currentPreset.safeAreaYPercent}%`,
-                  bottom: `${currentPreset.safeAreaYPercent}%`
+                  top: `${currentPreset.safeAreaTopPercent}%`,
+                  bottom: `${currentPreset.safeAreaBottomPercent}%`
                 }}
               />
             ) : null}
@@ -632,8 +687,8 @@ export default function HomePage(): JSX.Element {
                   ? {
                       left: `${currentPreset.safeAreaXPercent}%`,
                       right: `${currentPreset.safeAreaXPercent}%`,
-                      top: `${currentPreset.safeAreaYPercent}%`,
-                      bottom: `${currentPreset.safeAreaYPercent}%`,
+                      top: `${currentPreset.safeAreaTopPercent}%`,
+                      bottom: `${currentPreset.safeAreaBottomPercent}%`,
                       padding: 0
                     }
                   : { padding: 6 }
@@ -709,7 +764,7 @@ export default function HomePage(): JSX.Element {
           </label>
         </div>
         <div className="metaLine">
-          <span className="metaText">자동 위치: {autoLocationText || "없음"}</span>
+          <span className="metaText">자동 위치: {selectedAutoLocationText || "없음"}</span>
           <label className="switch" htmlFor="toggle-location">
             <input
               id="toggle-location"
@@ -721,6 +776,24 @@ export default function HomePage(): JSX.Element {
             <span className="slider" />
           </label>
         </div>
+        {autoLocationParts.length > 0 ? (
+          <div className="locationTagGroup" role="group" aria-label="자동 위치 항목 선택">
+            {autoLocationParts.map((part, index) => {
+              const isActive = activeAutoLocationParts[index] ?? true;
+              return (
+                <button
+                  key={`${part}-${index}`}
+                  type="button"
+                  className={`locationTagButton${isActive ? " isActive" : ""}`}
+                  onClick={() => void handleAutoLocationPartToggle(index)}
+                  disabled={isLoading}
+                >
+                  {part}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="metaLine">
           <label className="metaLabel" htmlFor="manual-location">
             수동 위치 입력 (GPS 없거나 수정할 때)
@@ -783,7 +856,7 @@ export default function HomePage(): JSX.Element {
       </section>
 
       <p className="metaText">
-        위치 정보는 기본적으로 브라우저에서 처리되며, GPS가 있을 때만 주소 변환 요청이 발생합니다.
+        업로드한 사진은 내 기기(브라우저)에서만 분석됩니다. 서버에는 사진 원본이 전송되지 않으며, 위치 정보가 있을 때에만 주소 변환을 위해 좌표값을 조회합니다.
       </p>
 
       <footer className="footerNote">
