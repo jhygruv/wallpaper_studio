@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { extractPhotoMeta, formatCapturedAt, formatCapturedTime } from "../lib/exif";
 import { getPresetById, WALLPAPER_PRESETS } from "../lib/presets";
 import { renderWallpaperCanvas } from "../lib/renderWallpaper";
+import type { TextPosition } from "../lib/renderWallpaper";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
@@ -17,6 +18,19 @@ const LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "ja", label: "日本語" }
 ] as const;
+const FONT_SCALE_STEPS = [80, 90, 100, 115, 130] as const;
+
+const TEXT_POSITION_OPTIONS: Array<{ value: TextPosition; label: string }> = [
+  { value: "left-top", label: "좌측/상단" },
+  { value: "center-top", label: "가운데/상단" },
+  { value: "right-top", label: "우측/상단" },
+  { value: "left-middle", label: "좌측/가운데" },
+  { value: "center-middle", label: "가운데/가운데" },
+  { value: "right-middle", label: "우측/가운데" },
+  { value: "left-bottom", label: "좌측/하단" },
+  { value: "center-bottom", label: "가운데/하단" },
+  { value: "right-bottom", label: "우측/하단" }
+];
 
 function readFileAsImage(file: File): Promise<HTMLImageElement> {
   const objectUrl = URL.createObjectURL(file);
@@ -32,6 +46,18 @@ function readFileAsImage(file: File): Promise<HTMLImageElement> {
     };
     image.src = objectUrl;
   });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(",");
+  const mimeMatch = header.match(/data:(.*);base64/);
+  const mimeType = mimeMatch?.[1] ?? "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
 }
 
 async function reverseGeocode(
@@ -71,6 +97,9 @@ export default function HomePage(): JSX.Element {
   const [showTimeOnWallpaper, setShowTimeOnWallpaper] = useState<boolean>(true);
   const [showAutoLocationOnWallpaper, setShowAutoLocationOnWallpaper] = useState<boolean>(true);
   const [showManualLocationOnWallpaper, setShowManualLocationOnWallpaper] = useState<boolean>(false);
+  const [fontScaleStepIndex, setFontScaleStepIndex] = useState<number>(2);
+  const [textPosition, setTextPosition] = useState<TextPosition>("left-bottom");
+  const fontScalePercent = FONT_SCALE_STEPS[fontScaleStepIndex];
 
   const effectiveLocationText = useMemo(() => {
     const manual = manualLocationText.trim();
@@ -79,6 +108,16 @@ export default function HomePage(): JSX.Element {
     }
     return autoLocationText.trim() || "위치 정보 없음";
   }, [autoLocationText, manualLocationText]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const isMobileViewport = window.matchMedia("(max-width: 720px)").matches;
+    if (isMobileViewport) {
+      setPresetId("mobile_9_19_5");
+    }
+  }, []);
 
   function getOverlayTexts(
     dateText: string,
@@ -132,17 +171,25 @@ export default function HomePage(): JSX.Element {
       showDate?: boolean;
       showTime?: boolean;
       showLocation?: boolean;
+    },
+    textStyle?: {
+      fontScalePercent?: number;
+      textPosition?: TextPosition;
     }
   ): Promise<void> {
     const image = await readFileAsImage(file);
     const preset = getPresetById(targetPresetId);
     const overlayTexts = getOverlayTexts(dateText, timeText, locationText, visibility);
+    const effectiveFontScalePercent = textStyle?.fontScalePercent ?? fontScalePercent;
+    const effectiveTextPosition = textStyle?.textPosition ?? textPosition;
     const canvas = renderWallpaperCanvas({
       image,
       preset,
       dateText: overlayTexts.dateText,
       timeText: overlayTexts.timeText,
-      locationText: overlayTexts.locationText
+      locationText: overlayTexts.locationText,
+      fontScale: effectiveFontScalePercent / 100,
+      textPosition: effectiveTextPosition
     });
     const url = canvas.toDataURL("image/jpeg", 0.92);
     setPreviewUrl(url);
@@ -312,6 +359,10 @@ export default function HomePage(): JSX.Element {
       showManualLocation?: boolean;
       autoLocation?: string;
       manualLocation?: string;
+    },
+    textStyle?: {
+      fontScalePercent?: number;
+      textPosition?: TextPosition;
     }
   ): Promise<void> {
     if (!selectedFile) {
@@ -326,7 +377,8 @@ export default function HomePage(): JSX.Element {
         capturedTimeText,
         resolveLocationText(locationVisibility),
         presetId,
-        visibility
+        visibility,
+        textStyle
       );
       setStatusMessage("");
     } finally {
@@ -381,6 +433,28 @@ export default function HomePage(): JSX.Element {
     );
   }
 
+  async function handleFontScaleChange(nextStepIndex: number): Promise<void> {
+    const normalizedStepIndex = Math.max(0, Math.min(FONT_SCALE_STEPS.length - 1, nextStepIndex));
+    const nextValue = FONT_SCALE_STEPS[normalizedStepIndex];
+    setFontScaleStepIndex(normalizedStepIndex);
+    await regeneratePreviewWithCurrentState(
+      "폰트 크기를 미리보기에 반영하는 중...",
+      undefined,
+      undefined,
+      { fontScalePercent: nextValue }
+    );
+  }
+
+  async function handleTextPositionChange(nextValue: TextPosition): Promise<void> {
+    setTextPosition(nextValue);
+    await regeneratePreviewWithCurrentState(
+      "텍스트 위치를 미리보기에 반영하는 중...",
+      undefined,
+      undefined,
+      { textPosition: nextValue }
+    );
+  }
+
   function handleDownload(): void {
     if (!previewUrl || !selectedFile) {
       setStatusMessage("다운로드할 결과가 없습니다. 먼저 생성해 주세요.");
@@ -391,6 +465,42 @@ export default function HomePage(): JSX.Element {
     anchor.href = previewUrl;
     anchor.download = `wallpaper-${preset.width}x${preset.height}.jpg`;
     anchor.click();
+  }
+
+  async function handleShareOrSave(): Promise<void> {
+    if (!previewUrl || !selectedFile) {
+      setStatusMessage("공유할 결과가 없습니다. 먼저 생성해 주세요.");
+      return;
+    }
+
+    const preset = getPresetById(presetId);
+    const filename = `wallpaper-${preset.width}x${preset.height}.jpg`;
+
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        const blob = dataUrlToBlob(previewUrl);
+        const shareFile = new File([blob], filename, { type: blob.type });
+        const sharePayload: ShareData = {
+          title: "Wallpaper Meta Studio",
+          text: "생성한 월페이퍼를 공유합니다."
+        };
+
+        if (
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [shareFile] })
+        ) {
+          sharePayload.files = [shareFile];
+        }
+
+        await navigator.share(sharePayload);
+        setStatusMessage("공유 시트를 열었습니다.");
+        return;
+      }
+    } catch {
+      // Fallback to download when share is unavailable or user cancels.
+    }
+
+    handleDownload();
   }
 
   return (
@@ -439,6 +549,10 @@ export default function HomePage(): JSX.Element {
               ))}
             </select>
           </div>
+          <div>
+            <label>텍스트 설정 안내</label>
+            <p className="metaText">미리보기에서 위치를 직접 클릭해 텍스트 위치를 정할 수 있어요.</p>
+          </div>
         </div>
       </section>
 
@@ -473,11 +587,48 @@ export default function HomePage(): JSX.Element {
               height={previewSize?.height ?? 675}
               unoptimized
             />
+            <div className="previewPositionGrid" role="group" aria-label="미리보기 위치 선택">
+              {TEXT_POSITION_OPTIONS.map((option) => {
+                const isSelected = textPosition === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`previewPositionCell${isSelected ? " isSelected" : ""}`}
+                    onClick={() => void handleTextPositionChange(option.value)}
+                    disabled={isLoading || !selectedFile}
+                    aria-label={option.label}
+                    title={option.label}
+                  />
+                );
+              })}
+            </div>
           </div>
         </section>
       ) : null}
 
       <section className="panel">
+        <div className="metaLine">
+          <span className="metaText">폰트 크기</span>
+          <div className="fontSizeStepGroup" role="group" aria-label="폰트 크기 선택">
+            {FONT_SCALE_STEPS.map((step, index) => {
+              const isSelected = fontScaleStepIndex === index;
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  className={`fontSizeStepButton${isSelected ? " isSelected" : ""}`}
+                  onClick={() => void handleFontScaleChange(index)}
+                  disabled={isLoading || !selectedFile}
+                  aria-label={`폰트 크기 ${step}%`}
+                  title={`폰트 크기 ${step}%`}
+                >
+                  <span style={{ fontSize: `${11 + index * 2}px` }}>A</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="metaLine">
           <span className="metaText">촬영 날짜: {capturedAtText}</span>
           <label className="switch" htmlFor="toggle-date">
@@ -558,7 +709,20 @@ export default function HomePage(): JSX.Element {
 
       <section className="panel actionPanel">
         <div className="actionRow">
-          <button type="button" onClick={handleDownload} disabled={isLoading || !previewUrl}>
+          <button
+            type="button"
+            className="shareButton"
+            onClick={() => void handleShareOrSave()}
+            disabled={isLoading || !previewUrl}
+          >
+            공유/저장 (모바일 권장)
+          </button>
+          <button
+            type="button"
+            className="downloadButton"
+            onClick={handleDownload}
+            disabled={isLoading || !previewUrl}
+          >
             다운로드 (JPG)
           </button>
         </div>

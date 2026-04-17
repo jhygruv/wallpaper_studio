@@ -17,6 +17,24 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
     label: "Mobile (9:19.5)",
     width: 1290,
     height: 2796
+  },
+  {
+    id: "iphone_17_pro",
+    label: "Apple iPhone 17 Pro",
+    width: 1206,
+    height: 2622
+  },
+  {
+    id: "iphone_17_pro_max",
+    label: "Apple iPhone 17 Pro Max",
+    width: 1320,
+    height: 2868
+  },
+  {
+    id: "ipad_pro_11",
+    label: "Apple iPad Pro 11-inch",
+    width: 1668,
+    height: 2420
   }
 ];
 
