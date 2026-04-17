@@ -78,7 +78,7 @@ export async function reverseGeocode(
   }
 
   if (parts.length > 0) {
-    return parts.join(", ");
+    return isKoOrJa ? parts.join(" ") : parts.join(", ");
   }
   return "위치 정보 없음";
 }

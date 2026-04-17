@@ -99,7 +99,9 @@ export default function HomePage(): JSX.Element {
   const [showManualLocationOnWallpaper, setShowManualLocationOnWallpaper] = useState<boolean>(false);
   const [fontScaleStepIndex, setFontScaleStepIndex] = useState<number>(2);
   const [textPosition, setTextPosition] = useState<TextPosition>("left-bottom");
+  const [useSafeArea, setUseSafeArea] = useState<boolean>(true);
   const fontScalePercent = FONT_SCALE_STEPS[fontScaleStepIndex];
+  const currentPreset = useMemo(() => getPresetById(presetId), [presetId]);
 
   const effectiveLocationText = useMemo(() => {
     const manual = manualLocationText.trim();
@@ -175,6 +177,7 @@ export default function HomePage(): JSX.Element {
     textStyle?: {
       fontScalePercent?: number;
       textPosition?: TextPosition;
+      useSafeArea?: boolean;
     }
   ): Promise<void> {
     const image = await readFileAsImage(file);
@@ -182,6 +185,7 @@ export default function HomePage(): JSX.Element {
     const overlayTexts = getOverlayTexts(dateText, timeText, locationText, visibility);
     const effectiveFontScalePercent = textStyle?.fontScalePercent ?? fontScalePercent;
     const effectiveTextPosition = textStyle?.textPosition ?? textPosition;
+    const effectiveUseSafeArea = textStyle?.useSafeArea ?? useSafeArea;
     const canvas = renderWallpaperCanvas({
       image,
       preset,
@@ -189,7 +193,8 @@ export default function HomePage(): JSX.Element {
       timeText: overlayTexts.timeText,
       locationText: overlayTexts.locationText,
       fontScale: effectiveFontScalePercent / 100,
-      textPosition: effectiveTextPosition
+      textPosition: effectiveTextPosition,
+      useSafeArea: effectiveUseSafeArea
     });
     const url = canvas.toDataURL("image/jpeg", 0.92);
     setPreviewUrl(url);
@@ -363,6 +368,7 @@ export default function HomePage(): JSX.Element {
     textStyle?: {
       fontScalePercent?: number;
       textPosition?: TextPosition;
+      useSafeArea?: boolean;
     }
   ): Promise<void> {
     if (!selectedFile) {
@@ -452,6 +458,16 @@ export default function HomePage(): JSX.Element {
       undefined,
       undefined,
       { textPosition: nextValue }
+    );
+  }
+
+  async function handleUseSafeAreaToggle(nextValue: boolean): Promise<void> {
+    setUseSafeArea(nextValue);
+    await regeneratePreviewWithCurrentState(
+      "안전영역 설정을 미리보기에 반영하는 중...",
+      undefined,
+      undefined,
+      { useSafeArea: nextValue }
     );
   }
 
@@ -550,8 +566,19 @@ export default function HomePage(): JSX.Element {
             </select>
           </div>
           <div>
-            <label>텍스트 설정 안내</label>
-            <p className="metaText">미리보기에서 위치를 직접 클릭해 텍스트 위치를 정할 수 있어요.</p>
+            <div className="metaLine">
+              <span className="metaText">안전영역 사용</span>
+              <label className="switch" htmlFor="toggle-safe-area">
+                <input
+                  id="toggle-safe-area"
+                  type="checkbox"
+                  checked={useSafeArea}
+                  onChange={(event) => void handleUseSafeAreaToggle(event.target.checked)}
+                  disabled={isLoading}
+                />
+                <span className="slider" />
+              </label>
+            </div>
           </div>
         </div>
       </section>
@@ -587,7 +614,33 @@ export default function HomePage(): JSX.Element {
               height={previewSize?.height ?? 675}
               unoptimized
             />
-            <div className="previewPositionGrid" role="group" aria-label="미리보기 위치 선택">
+            {useSafeArea ? (
+              <div
+                className="safeAreaBox"
+                style={{
+                  left: `${currentPreset.safeAreaXPercent}%`,
+                  right: `${currentPreset.safeAreaXPercent}%`,
+                  top: `${currentPreset.safeAreaYPercent}%`,
+                  bottom: `${currentPreset.safeAreaYPercent}%`
+                }}
+              />
+            ) : null}
+            <div
+              className="previewPositionGrid"
+              style={
+                useSafeArea
+                  ? {
+                      left: `${currentPreset.safeAreaXPercent}%`,
+                      right: `${currentPreset.safeAreaXPercent}%`,
+                      top: `${currentPreset.safeAreaYPercent}%`,
+                      bottom: `${currentPreset.safeAreaYPercent}%`,
+                      padding: 0
+                    }
+                  : { padding: 6 }
+              }
+              role="group"
+              aria-label="미리보기 위치 선택"
+            >
               {TEXT_POSITION_OPTIONS.map((option) => {
                 const isSelected = textPosition === option.value;
                 return (

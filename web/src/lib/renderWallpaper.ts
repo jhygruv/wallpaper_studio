@@ -19,6 +19,7 @@ export type RenderOptions = {
   locationText: string;
   fontScale: number;
   textPosition: TextPosition;
+  useSafeArea: boolean;
 };
 
 function drawCoverImage(
@@ -49,7 +50,7 @@ function drawCoverImage(
 }
 
 export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement {
-  const { image, preset, dateText, timeText, locationText, fontScale, textPosition } = options;
+  const { image, preset, dateText, timeText, locationText, fontScale, textPosition, useSafeArea } = options;
   const canvas = document.createElement("canvas");
   canvas.width = preset.width;
   canvas.height = preset.height;
@@ -68,20 +69,33 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
   context.fillRect(0, 0, preset.width, preset.height);
 
   const normalizedScale = Number.isFinite(fontScale) ? Math.max(0.6, Math.min(fontScale, 2.2)) : 1;
-  const margin = Math.max(48, Math.floor(preset.width * 0.04));
-  const dateFontSize = Math.max(24, Math.floor(preset.width * 0.024 * normalizedScale));
-  const timeFontSize = Math.max(20, Math.floor(preset.width * 0.019 * normalizedScale));
-  const locationFontSize = Math.max(18, Math.floor(preset.width * 0.017 * normalizedScale));
-  const lineSpacing = Math.max(8, Math.floor(preset.width * 0.006 * normalizedScale));
+  const isMobilePreset = preset.id.includes("mobile") || preset.id.includes("iphone");
+  const mobilePresetBoost = isMobilePreset ? 2 : 1;
+  const effectiveScale = normalizedScale * mobilePresetBoost;
+  const baseMargin = Math.max(48, Math.floor(preset.width * 0.04));
+  const safeInsetX = Math.max(0, Math.floor((preset.width * preset.safeAreaXPercent) / 100));
+  const safeInsetY = Math.max(0, Math.floor((preset.height * preset.safeAreaYPercent) / 100));
+  const leftBoundary = useSafeArea ? Math.max(baseMargin, safeInsetX) : baseMargin;
+  const rightBoundary = useSafeArea
+    ? Math.min(preset.width - baseMargin, preset.width - safeInsetX)
+    : preset.width - baseMargin;
+  const topBoundary = useSafeArea ? Math.max(baseMargin, safeInsetY) : baseMargin;
+  const bottomBoundary = useSafeArea
+    ? Math.min(preset.height - baseMargin, preset.height - safeInsetY)
+    : preset.height - baseMargin;
+  const dateFontSize = Math.max(24, Math.floor(preset.width * 0.024 * effectiveScale));
+  const timeFontSize = Math.max(20, Math.floor(preset.width * 0.019 * effectiveScale));
+  const locationFontSize = Math.max(18, Math.floor(preset.width * 0.017 * effectiveScale));
+  const lineSpacing = Math.max(8, Math.floor(preset.width * 0.006 * effectiveScale));
 
-  context.textBaseline = "top";
+  context.textBaseline = "alphabetic";
   context.fillStyle = "#ffffff";
   context.shadowColor = "rgba(0,0,0,0.6)";
   context.shadowBlur = 18;
   context.shadowOffsetY = 3;
   context.textAlign = "left";
 
-  const lines = [
+  const lineCandidates = [
     {
       text: dateText.trim(),
       font: `700 ${dateFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`,
@@ -99,24 +113,33 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
     }
   ].filter((line) => line.text.length > 0);
 
-  if (lines.length > 0) {
-    const totalTextHeight =
-      lines.reduce((sum, line) => sum + line.size, 0) + lineSpacing * Math.max(lines.length - 1, 0);
-
-    let maxLineWidth = 0;
-    for (const line of lines) {
+  if (lineCandidates.length > 0) {
+    const lines = lineCandidates.map((line) => {
       context.font = line.font;
       const measured = context.measureText(line.text);
-      maxLineWidth = Math.max(maxLineWidth, measured.width);
-    }
+      const ascent = measured.actualBoundingBoxAscent || line.size * 0.78;
+      const descent = measured.actualBoundingBoxDescent || line.size * 0.24;
+      return {
+        ...line,
+        width: measured.width,
+        ascent,
+        descent,
+        height: ascent + descent
+      };
+    });
+
+    const totalTextHeight =
+      lines.reduce((sum, line) => sum + line.height, 0) + lineSpacing * Math.max(lines.length - 1, 0);
+
+    const maxLineWidth = lines.reduce((max, line) => Math.max(max, line.width), 0);
 
     const [horizontal, vertical] = textPosition.split("-");
-    const blockLeft = margin;
-    const blockRight = preset.width - margin;
-    const blockCenterX = preset.width / 2;
-    const blockTop = margin;
-    const blockBottom = preset.height - margin;
-    const blockMiddleY = (preset.height - totalTextHeight) / 2;
+    const blockLeft = leftBoundary;
+    const blockRight = rightBoundary;
+    const blockCenterX = (leftBoundary + rightBoundary) / 2;
+    const blockTop = topBoundary;
+    const blockBottom = bottomBoundary;
+    const blockMiddleY = (topBoundary + bottomBoundary - totalTextHeight) / 2;
 
     let x = blockLeft;
     if (horizontal === "center") {
@@ -138,15 +161,15 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
 
     // Keep text block fully visible even with large font scale.
     if (horizontal === "center") {
-      x = Math.max(margin + maxLineWidth / 2, Math.min(preset.width - margin - maxLineWidth / 2, x));
+      x = Math.max(blockLeft + maxLineWidth / 2, Math.min(blockRight - maxLineWidth / 2, x));
     }
 
-    currentY = Math.max(margin, Math.min(preset.height - margin - totalTextHeight, currentY));
+    currentY = Math.max(blockTop, Math.min(blockBottom - totalTextHeight, currentY));
 
     for (const line of lines) {
       context.font = line.font;
-      context.fillText(line.text, x, currentY);
-      currentY += line.size + lineSpacing;
+      context.fillText(line.text, x, currentY + line.ascent);
+      currentY += line.height + lineSpacing;
     }
   }
 
