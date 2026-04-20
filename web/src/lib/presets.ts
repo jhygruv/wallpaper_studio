@@ -34,7 +34,7 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
     height: 2622,
     safeAreaXPercent: 10,
     safeAreaTopPercent: 24,
-    safeAreaBottomPercent: 16
+    safeAreaBottomPercent: 8
   },
   {
     id: "iphone_17_pro_max",
@@ -43,7 +43,7 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
     height: 2868,
     safeAreaXPercent: 10,
     safeAreaTopPercent: 24,
-    safeAreaBottomPercent: 16
+    safeAreaBottomPercent: 8
   },
   {
     id: "ipad_pro_11",

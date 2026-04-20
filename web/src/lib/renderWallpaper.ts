@@ -9,7 +9,8 @@ export type TextPosition =
   | "right-middle"
   | "left-bottom"
   | "center-bottom"
-  | "right-bottom";
+  | "right-bottom"
+  | "iphone-recommended";
 
 export type RenderOptions = {
   image: HTMLImageElement;
@@ -134,7 +135,10 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
 
     const maxLineWidth = lines.reduce((max, line) => Math.max(max, line.width), 0);
 
-    const [horizontal, vertical] = textPosition.split("-");
+    const isIphoneRecommendedPosition = textPosition === "iphone-recommended";
+    const [horizontal, vertical] = isIphoneRecommendedPosition
+      ? (["center", "middle"] as const)
+      : textPosition.split("-");
     const blockLeft = leftBoundary;
     const blockRight = rightBoundary;
     const blockCenterX = (leftBoundary + rightBoundary) / 2;
@@ -160,12 +164,26 @@ export function renderWallpaperCanvas(options: RenderOptions): HTMLCanvasElement
       currentY = blockBottom - totalTextHeight;
     }
 
+    if (isIphoneRecommendedPosition && preset.id.includes("iphone")) {
+      // Empirical lock-screen anchor around the midpoint between flashlight/camera controls.
+      const iphoneRecommendedCenterY = preset.height * 0.9;
+      currentY = iphoneRecommendedCenterY - totalTextHeight / 2;
+    }
+
     // Keep text block fully visible even with large font scale.
     if (horizontal === "center") {
       x = Math.max(blockLeft + maxLineWidth / 2, Math.min(blockRight - maxLineWidth / 2, x));
     }
 
-    currentY = Math.max(blockTop, Math.min(blockBottom - totalTextHeight, currentY));
+    let minY = blockTop;
+    let maxY = blockBottom - totalTextHeight;
+    if (isIphoneRecommendedPosition && preset.id.includes("iphone")) {
+      // For iPhone recommended position, use a lock-screen-specific clamp range
+      // so safe-area bottom inset does not pull text too far upward.
+      minY = Math.max(16, Math.floor(preset.height * 0.55));
+      maxY = Math.max(minY, preset.height - totalTextHeight - Math.max(18, Math.floor(preset.height * 0.03)));
+    }
+    currentY = Math.max(minY, Math.min(maxY, currentY));
 
     for (const line of lines) {
       context.font = line.font;

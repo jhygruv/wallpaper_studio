@@ -135,6 +135,16 @@ button {
   background: rgba(95, 122, 255, 0.25);
 }
 
+.recommendedPositionButton {
+  width: auto;
+  min-width: 180px;
+}
+
+.recommendedPositionButton.isSelected {
+  border-color: #8ca8ff;
+  background: rgba(95, 122, 255, 0.25);
+}
+
 .switch {
   position: relative;
   display: inline-block;

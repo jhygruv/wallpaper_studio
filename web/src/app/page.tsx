@@ -33,6 +33,60 @@ const TEXT_POSITION_OPTIONS: Array<{ value: TextPosition; label: string }> = [
   { value: "right-bottom", label: "우측/하단" }
 ];
 
+function getDefaultTextPositionByPreset(presetId: string): TextPosition {
+  if (presetId.includes("iphone")) {
+    return "iphone-recommended";
+  }
+  return "left-bottom";
+}
+
+function detectBestPresetForDevice(): { presetId: string; reason: string } | null {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return null;
+  }
+
+  const ua = navigator.userAgent.toLowerCase();
+  const isIphone = /iphone/.test(ua);
+  const viewportWidth = window.screen.width;
+  const viewportHeight = window.screen.height;
+  const dpr = window.devicePixelRatio || 1;
+  const deviceWidth = Math.round(Math.min(viewportWidth, viewportHeight) * dpr);
+  const deviceHeight = Math.round(Math.max(viewportWidth, viewportHeight) * dpr);
+
+  if (isIphone) {
+    const iphonePresets = WALLPAPER_PRESETS.filter((preset) => preset.id.includes("iphone"));
+    if (iphonePresets.length === 0) {
+      return null;
+    }
+
+    let bestPreset = iphonePresets[0];
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const preset of iphonePresets) {
+      const distance =
+        Math.abs(preset.width - deviceWidth) + Math.abs(preset.height - deviceHeight);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPreset = preset;
+      }
+    }
+
+    return {
+      presetId: bestPreset.id,
+      reason: `iPhone 화면 해상도(${deviceWidth}x${deviceHeight}) 기준으로 ${bestPreset.label} 프리셋을 자동 선택했습니다.`
+    };
+  }
+
+  const isMobileViewport = window.matchMedia("(max-width: 720px)").matches;
+  if (isMobileViewport) {
+    return {
+      presetId: "mobile_9_19_5",
+      reason: "모바일 화면으로 감지되어 Mobile (9:19.5) 프리셋을 자동 선택했습니다."
+    };
+  }
+
+  return null;
+}
+
 function readFileAsImage(file: File): Promise<HTMLImageElement> {
   const objectUrl = URL.createObjectURL(file);
   return new Promise((resolve, reject) => {
@@ -101,13 +155,17 @@ export default function HomePage(): JSX.Element {
   const [previewSize, setPreviewSize] = useState<{ width: number; height: number } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [presetDetectionMessage, setPresetDetectionMessage] = useState<string>("");
   const [displayLanguage, setDisplayLanguage] = useState<string>("ko");
   const [showDateOnWallpaper, setShowDateOnWallpaper] = useState<boolean>(true);
   const [showTimeOnWallpaper, setShowTimeOnWallpaper] = useState<boolean>(true);
   const [showAutoLocationOnWallpaper, setShowAutoLocationOnWallpaper] = useState<boolean>(true);
   const [showManualLocationOnWallpaper, setShowManualLocationOnWallpaper] = useState<boolean>(false);
   const [fontScaleStepIndex, setFontScaleStepIndex] = useState<number>(2);
-  const [textPosition, setTextPosition] = useState<TextPosition>("left-bottom");
+  const [textPosition, setTextPosition] = useState<TextPosition>(
+    getDefaultTextPositionByPreset(WALLPAPER_PRESETS[0].id)
+  );
+  const [hasCustomTextPosition, setHasCustomTextPosition] = useState<boolean>(false);
   const [useSafeArea, setUseSafeArea] = useState<boolean>(true);
   const fontScalePercent = FONT_SCALE_STEPS[fontScaleStepIndex];
   const currentPreset = useMemo(() => getPresetById(presetId), [presetId]);
@@ -132,13 +190,14 @@ export default function HomePage(): JSX.Element {
   }, [activeAutoLocationParts, autoLocationParts, autoLocationText, displayLanguage]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    const detected = detectBestPresetForDevice();
+    if (!detected) {
       return;
     }
-    const isMobileViewport = window.matchMedia("(max-width: 720px)").matches;
-    if (isMobileViewport) {
-      setPresetId("mobile_9_19_5");
-    }
+    setPresetId(detected.presetId);
+    setTextPosition(getDefaultTextPositionByPreset(detected.presetId));
+    setHasCustomTextPosition(false);
+    setPresetDetectionMessage(detected.reason);
   }, []);
 
   function getOverlayTexts(
@@ -328,6 +387,11 @@ export default function HomePage(): JSX.Element {
   }
 
   async function handlePresetChange(nextPresetId: string): Promise<void> {
+    const nextDefaultTextPosition = getDefaultTextPositionByPreset(nextPresetId);
+    const nextTextPosition = hasCustomTextPosition ? textPosition : nextDefaultTextPosition;
+    if (!hasCustomTextPosition) {
+      setTextPosition(nextDefaultTextPosition);
+    }
     setPresetId(nextPresetId);
     if (!selectedFile) {
       return;
@@ -340,7 +404,9 @@ export default function HomePage(): JSX.Element {
         capturedAtText,
         capturedTimeText,
         resolveLocationText(),
-        nextPresetId
+        nextPresetId,
+        undefined,
+        { textPosition: nextTextPosition }
       );
       setStatusMessage("출력 프리셋 변경이 미리보기에 반영되었습니다.");
     } catch (error) {
@@ -489,6 +555,7 @@ export default function HomePage(): JSX.Element {
   }
 
   async function handleTextPositionChange(nextValue: TextPosition): Promise<void> {
+    setHasCustomTextPosition(true);
     setTextPosition(nextValue);
     await regeneratePreviewWithCurrentState(
       "텍스트 위치를 미리보기에 반영하는 중...",
@@ -604,6 +671,9 @@ export default function HomePage(): JSX.Element {
                 </option>
               ))}
             </select>
+            {presetDetectionMessage ? (
+              <p className="metaText">{presetDetectionMessage} 필요하면 직접 변경해 주세요.</p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="location-language">표시 언어</label>
@@ -737,6 +807,19 @@ export default function HomePage(): JSX.Element {
             })}
           </div>
         </div>
+        {presetId.includes("iphone") ? (
+          <div className="metaLine">
+            <span className="metaText">iPhone 권장 위치</span>
+            <button
+              type="button"
+              className={`recommendedPositionButton${textPosition === "iphone-recommended" ? " isSelected" : ""}`}
+              onClick={() => void handleTextPositionChange("iphone-recommended")}
+              disabled={isLoading || !selectedFile}
+            >
+              하단 중앙 (플래시/카메라 사이)
+            </button>
+          </div>
+        ) : null}
         <div className="metaLine">
           <span className="metaText">촬영 날짜: {capturedAtText}</span>
           <label className="switch" htmlFor="toggle-date">
